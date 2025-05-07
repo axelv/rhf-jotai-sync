@@ -1,54 +1,81 @@
-# React + TypeScript + Vite
+# RHF-Jotai Sync
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This repository demonstrates a proof-of-concept for bidirectional synchronization between [React Hook Form](https://react-hook-form.com/) and [Jotai](https://jotai.org/) state management.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🔄 Bidirectional sync between React Hook Form state and Jotai atoms
+- ⏱️ Debounced updates to optimize performance
+- ↩️ Undo/Redo functionality using `jotai-history`
+- 🌳 Support for nested form fields
+- 🎯 Clean separation of form UI and state management
 
-## Expanding the ESLint configuration
+## How It Works
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The implementation uses a two-atom approach:
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+1. `baseAtom`: A primitive atom that holds the current form state
+2. `formValuesAtom`: A derived atom that:
+   - Gets values from the base atom
+   - Writes values back to React Hook Form when updated
+
+The form state is synchronized:
+- From RHF to Jotai: Using a subscription to the `watch` method with debouncing
+- From Jotai to RHF: Through the write function in the derived atom
+
+## Implementation Details
+
+```tsx
+// Base atom holds form state
+const baseAtom = atom(initialFormValues);
+
+// Derived atom provides bidirectional sync
+const formValuesAtom = atom(
+  (get) => get(baseAtom),
+  (_get, _set, values) => {
+    // Update RHF when atom changes
+    reset(values);
+  }
+);
+
+// History-enabled atom for undo/redo
+const historyAtom = withHistory(formValuesAtom);
+
+// Subscribe to RHF changes
+useEffect(() => {
+  const debouncedSetBase = debounce(setBase, 50);
+  const subscription = watch((_, { values }) => {
+    if (values) debouncedSetBase(values);
+  });
+  
+  return () => {
+    subscription.unsubscribe();
+    debouncedSetBase.cancel();
+  };
+}, [watch, setBase]);
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Technologies Used
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- [React](https://reactjs.org/)
+- [React Hook Form](https://react-hook-form.com/) - For form management
+- [Jotai](https://jotai.org/) - For state management
+- [jotai-history](https://github.com/jotai-labs/jotai-history) - For undo/redo functionality
+- [Lodash debounce](https://lodash.com/docs/#debounce) - For performance optimization
+- [Vite](https://vitejs.dev/) - For development and building
+- [TailwindCSS](https://tailwindcss.com/) - For styling
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies with `npm install` or `yarn install`
+3. Start the development server with `npm run dev` or `yarn dev`
+
+## Use Cases
+
+This approach is particularly useful for:
+
+- Complex forms requiring state persistence outside the form
+- Forms that need to integrate with global application state
+- Implementing advanced features like undo/redo
+- Creating reusable form components with complex state management
